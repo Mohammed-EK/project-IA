@@ -6,6 +6,7 @@ from docx import Document
 import io
 from time import sleep
 from stqdm import stqdm  # Import the stqdm progress bar
+import matplotlib.pyplot as plt
 
 # Initialize the Reddit API (PRAW)
 reddit = praw.Reddit(client_id="41Huqnmhw4KOlpZth6nAWQ", 
@@ -84,6 +85,17 @@ def generate_word_doc(aggressive_comments):
     word_output.seek(0)
     return word_output
 
+# Function to plot aggressive comment percentage
+def plot_aggressive_comments(total_comments, aggressive_count):
+    fig, ax = plt.subplots()
+    labels = ['Aggressive', 'Non-Aggressive']
+    sizes = [aggressive_count, total_comments - aggressive_count]
+    colors = ['#FF5733', '#4CAF50']
+    explode = (0.1, 0)  # Explode the first slice
+    ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')  # Equal aspect ratio ensures the pie is drawn as a circle
+    st.pyplot(fig)
+
 # Streamlit app
 def main():
     st.title("Reddit Behavior Detection")
@@ -137,6 +149,9 @@ def main():
                     )
                 else:
                     st.write("No aggressive comments found.")
+
+                # Display the pie chart after generating the report
+                plot_aggressive_comments(total_comments, aggressive_count)
             else:
                 st.write("No comments available for analysis.")
         else:
