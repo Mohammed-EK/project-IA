@@ -4,6 +4,8 @@ import re
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from docx import Document
 import io
+from time import sleep
+from stqdm import stqdm  # Import the stqdm progress bar
 
 # Initialize the Reddit API (PRAW)
 reddit = praw.Reddit(client_id="41Huqnmhw4KOlpZth6nAWQ", 
@@ -14,192 +16,131 @@ reddit = praw.Reddit(client_id="41Huqnmhw4KOlpZth6nAWQ",
 analyzer = SentimentIntensityAnalyzer()
 
 # Function to fetch and analyze comments from a user's last 10 posts
-def fetch_aggressive_comments(username):
+def fetch_aggressive_comments_by_user(username):
     try:
-        # Get the user profile
         user = reddit.redditor(username)
         aggressive_comments = []
+        total_comments = 0
 
-        # Fetch the last 10 submissions
-        posts = user.submissions.new(limit=10)
+        posts = list(user.submissions.new(limit=10))  # Fetch posts first
+        total_posts = len(posts)  # Get the total number of posts
+        with stqdm(posts, desc="Fetching posts...", total=total_posts) as progress_bar:
+            for post in progress_bar:
+                post.comments.replace_more(limit=0)
+                for comment in post.comments.list():
+                    total_comments += 1
+                    sentiment_score = analyzer.polarity_scores(comment.body)
+                    if sentiment_score['compound'] <= -0.5:
+                        aggressive_comments.append({
+                            'post_title': post.title,
+                            'comment_body': comment.body,
+                            'score': sentiment_score['compound']
+                        })
 
-        for post in posts:
-            post.comments.replace_more(limit=0)  # Avoids recursion of "MoreComments"
-            for comment in post.comments.list():
-                # Analyze sentiment of each comment
-                sentiment_score = analyzer.polarity_scores(comment.body)
-                if sentiment_score['compound'] <= -0.5:  # Threshold for aggressive comments
-                    aggressive_comments.append({
-                        'post_title': post.title,
-                        'comment_body': comment.body,
-                        'score': sentiment_score['compound']
-                    })
-        
-        return aggressive_comments
+        return aggressive_comments, total_comments
     except Exception as e:
         st.error(f"An error occurred: {e}")
-        return []
+        return [], 0
 
-# Function to generate a Word document in memory
+# Function to fetch and analyze comments from a subreddit
+def fetch_aggressive_comments_by_subreddit(subreddit_name):
+    try:
+        subreddit = reddit.subreddit(subreddit_name)
+        aggressive_comments = []
+        total_comments = 0
+
+        posts = list(subreddit.new(limit=10))  # Fetch posts first
+        total_posts = len(posts)  # Get the total number of posts
+        with stqdm(posts, desc="Fetching posts...", total=total_posts) as progress_bar:
+            for post in progress_bar:
+                post.comments.replace_more(limit=0)
+                for comment in post.comments.list():
+                    total_comments += 1
+                    sentiment_score = analyzer.polarity_scores(comment.body)
+                    if sentiment_score['compound'] <= -0.5:
+                        aggressive_comments.append({
+                            'post_title': post.title,
+                            'comment_body': comment.body,
+                            'score': sentiment_score['compound']
+                        })
+
+        return aggressive_comments, total_comments
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        return [], 0
+
+# Function to generate a Word document
 def generate_word_doc(aggressive_comments):
-    # Create a Word Document
     doc = Document()
-
-    # Add a title
     doc.add_heading('Aggressive Comments Report', level=1)
 
-    # Add content for each comment
     for comment in aggressive_comments:
-        try:
-            # Add post title
-            doc.add_heading(f"Post Title: {comment['post_title']}", level=2)
+        doc.add_heading(f"Post Title: {comment['post_title']}", level=2)
+        doc.add_paragraph(f"Comment: {comment['comment_body']}")
+        doc.add_paragraph(f"Sentiment Score: {comment['score']}")
 
-            # Add comment body
-            comment_paragraph = doc.add_paragraph()
-            comment_paragraph.add_run("Comment: ").bold = True
-            comment_paragraph.add_run(comment['comment_body'])
-
-            # Add sentiment score
-            score_paragraph = doc.add_paragraph()
-            score_paragraph.add_run("Sentiment Score: ").bold = True
-            score_paragraph.add_run(str(comment['score']))
-
-            doc.add_paragraph("")  # Add a blank line
-        except Exception as e:
-            print(f"Error adding content to Word document: {e}")
-
-    # Save the Word document to a memory buffer
     word_output = io.BytesIO()
     doc.save(word_output)
     word_output.seek(0)
     return word_output
 
-# Function to extract username from a Reddit profile URL
-def extract_username_from_url(profile_url):
-    # Regex to match Reddit profile URLs, e.g., 'https://www.reddit.com/user/username/'
-    match = re.search(r'https?://(?:www\.)?reddit\.com/user/([a-zA-Z0-9_]+)', profile_url)
-    if match:
-        return match.group(1)  # Extract the username part
-    else:
-        return None
-
 # Streamlit app
 def main():
-    # Custom CSS for styling
-    st.markdown("""
-        <style>
-            body {
-                background-color: #f0f2f6;
-            }
-            .container {
-                width: 80%;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: white;
-                border-radius: 10px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            }
-            .title {
-                font-size: 40px;
-                font-weight: bold;
-                color: #4CAF50;
-                
-            }
-            .description {
-                font-size: 18px;
-                color: #333333;
-                
-                margin-bottom: 20px;
-            }
-            .btn-download {
-                background-color: #FF5733;
-                color: white;
-                padding: 12px 24px;
-                border-radius: 5px;
-                font-size: 16px;
-                text-align: center;
-                display: block;
-                margin: 0 auto;
-            }
-            .btn-download:hover {
-                background-color: #FF6F61;
-            }
-            .input-box {
-                background-color: #fff;
-                border-radius: 10px;
-                padding: 15px;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            }
-            .input-box input {
-                width: 100%;
-                padding: 10px;
-                font-size: 16px;
-                border-radius: 5px;
-                border: 1px solid #ddd;
-            }
-            .input-box input:focus {
-                outline: none;
-                border-color: #4CAF50;
-            }
-            .input-box button {
-                width: 100%;
-                padding: 12px;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 16px;
-                cursor: pointer;
-            }
-            .input-box button:hover {
-                background-color: #45a049;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+    st.title("Reddit Behavior Detection")
 
-    st.title("Reddit Behavior Detection", anchor="title")
-    
-    # Add a container for the app content
-    with st.container():
-        st.markdown("<div class='description'>Enter a Reddit username or profile link below to analyze aggressive comments based on sentiment analysis.</div>", unsafe_allow_html=True)
+    search_type = st.radio(
+        "Search By:",
+        ('Username/Profile Link', 'Subreddit'),
+        help="Choose whether to search by Reddit username/profile link or by subreddit."
+    )
 
-        # Input for username or profile link
-        user_input = st.text_input("Reddit Username or Profile Link:", key="input", placeholder="e.g., u/username or https://www.reddit.com/user/username", help="Enter the Reddit username or profile link")
+    user_input = st.text_input(
+        "Enter Reddit Username, Profile Link, or Subreddit Name:",
+        placeholder="e.g., u/username, https://www.reddit.com/user/username, or subreddit_name"
+    )
 
-        if st.button("Search", key="search_button"):
-            if user_input:
-                # Check if the input is a URL or username
+    if st.button("Search"):
+        if user_input:
+            if search_type == 'Username/Profile Link':
                 if "reddit.com" in user_input:
-                    # It's a profile link; extract the username from the link
-                    username = extract_username_from_url(user_input)
-                    if not username:
-                        st.error("Invalid Reddit profile link. Please provide a valid link.")
-                        return
+                    username = re.search(r'reddit\.com/user/([a-zA-Z0-9_]+)', user_input).group(1)
                 else:
-                    # It's a username
                     username = user_input.strip()
 
-                # Fetch aggressive comments
-                with st.spinner('Fetching data...'):
-                    aggressive_comments = fetch_aggressive_comments(username)
-                
+                with st.spinner("Fetching data..."):
+                    aggressive_comments, total_comments = fetch_aggressive_comments_by_user(username)
+
+            elif search_type == 'Subreddit':
+                subreddit_name = user_input.strip()
+                with st.spinner("Fetching data..."):
+                    aggressive_comments, total_comments = fetch_aggressive_comments_by_subreddit(subreddit_name)
+
+            if total_comments > 0:
+                aggressive_count = len(aggressive_comments)
+                st.write(f"Total Comments Analyzed: {total_comments}")
+                st.write(f"Aggressive Comments Found: {aggressive_count}")
+
+                # First progress bar for generating the report
+                with stqdm(range(100), desc="Generating Report...", total=100) as progress_bar:
+                    for i in range(100):  # Looping through the range to simulate progress
+                        sleep(0.1)  # Simulate time for generating report
+                        progress_bar.update(1)  # Update progress bar by 1 each iteration
+
+                # Once the progress bar is complete, show the download button for the report
                 if aggressive_comments:
-                    # Generate Word document
                     word_file = generate_word_doc(aggressive_comments)
-                    
-                    # Provide download link for the Word document
                     st.download_button(
                         label="Download Report as Word Document",
                         data=word_file,
                         file_name="aggressive_comments_report.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key="download_button",
-                        use_container_width=True,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
                 else:
                     st.write("No aggressive comments found.")
             else:
-                st.write("Please enter a Reddit username or profile link.")
+                st.write("No comments available for analysis.")
+        else:
+            st.error("Please enter a valid input.")
 
 if __name__ == "__main__":
     main()
