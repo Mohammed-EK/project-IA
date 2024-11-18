@@ -94,6 +94,11 @@ def plot_aggressive_comments(total_comments, aggressive_count):
     explode = (0.1, 0)  # Explode the first slice
     ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
     ax.axis('equal')  # Equal aspect ratio ensures the pie is drawn as a circle
+
+    # Forcing the canvas to draw (if necessary)
+    fig.canvas.draw()
+
+    # Display the pie chart
     st.pyplot(fig)
 
 # Streamlit app
