@@ -31,7 +31,7 @@ AGGRESSIVE_KEYWORDS = [
     "noob", "rage quit", "crybaby", "salty", "get rekt", "gremlin", "cheater", 
     "hacker", "toxic", "worthless piece of shit", "filthy animal", "die", "rot", 
     "drop dead", "go to hell", "burn in hell", "eat shit", "choke", "fuck off",
-    
+
     # French
     "haine", "stupide", "idiot", "imbécile", "nul", "dégage", "inutile", 
     "déchet", "abruti", "ignorant", "pathétique", "dégoûtant", "perdant", 
@@ -43,12 +43,12 @@ AGGRESSIVE_KEYWORDS = [
     "baltringue", "clodo", "mongol", "rageux", "croûton", "bouffon", 
     "branleur", "crétin", "plouc", "tocard", "kéké", "espèce de merde", 
     "sale chien", "batard", "fils de pute", "foutaises",
-    
+
     # Aggressive Phrases
     "you suck", "nobody likes you", "die already", "go die", "kill yourself", 
     "shut the fuck up", "get lost", "waste of space", "go screw yourself", 
     "drown", "burn", "choke on it", "eat dirt", "filthy rat", "you’re pathetic",
-    
+
     # Internet-Specific
     "git gud", "ez clap", "tryhard", "ragequit", "go touch grass", "malding", 
     "seethe", "cope", "L + ratio", "owned", "rekt", "trash player", "camping noob", 
@@ -118,8 +118,24 @@ def create_cucumber_chart(aggressive_comments):
     plt.close(fig)
     return chart_path
 
-# Function to create a Word document with a cumulative chart
-def generate_word_doc_with_chart(aggressive_comments):
+# Function to create a pie chart image (only for the Word file, not displayed in Streamlit)
+def plot_aggressive_comments(total_comments, aggressive_count):
+    fig, ax = plt.subplots()
+    labels = ['Aggressive', 'Non-Aggressive']
+    sizes = [aggressive_count, total_comments - aggressive_count]
+    colors = ['#FF5733', '#4CAF50']
+    explode = (0.1, 0)
+    ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
+
+    # Save the plot as an image for the Word file
+    chart_path = "aggressive_comments_pie_chart.png"
+    plt.savefig(chart_path, format='png', bbox_inches='tight')
+    plt.close(fig)
+    return chart_path
+
+# Function to generate a Word document with charts
+def generate_word_doc_with_chart(aggressive_comments, total_comments, aggressive_count):
     doc = Document()
     doc.add_heading('Aggressive Comments Report', level=1)
 
@@ -129,27 +145,23 @@ def generate_word_doc_with_chart(aggressive_comments):
         doc.add_paragraph(f"Sentiment Score: {comment['sentiment_score']:.2f}")
 
     if aggressive_comments:
-        chart_path = create_cucumber_chart(aggressive_comments)
+        # Add cumulative sentiment score chart
+        cumulative_chart_path = create_cucumber_chart(aggressive_comments)
         doc.add_page_break()
         doc.add_heading('Cumulative Sentiment Score Chart', level=1)
-        doc.add_picture(chart_path, width=docx.shared.Inches(6), height=docx.shared.Inches(4))
+        doc.add_picture(cumulative_chart_path, width=docx.shared.Inches(6), height=docx.shared.Inches(4))
+
+    # Add pie chart of aggressive vs. non-aggressive comments
+    pie_chart_path = plot_aggressive_comments(total_comments, len(aggressive_comments))
+    doc.add_page_break()
+    doc.add_heading('Aggressive vs Non-Aggressive Comments', level=1)
+    doc.add_picture(pie_chart_path, width=docx.shared.Inches(6), height=docx.shared.Inches(4))
 
     # Save the document to an in-memory buffer
     word_output = io.BytesIO()
     doc.save(word_output)
     word_output.seek(0)
     return word_output
-
-# Function to display a pie chart of aggressive vs non-aggressive comments
-def plot_aggressive_comments(total_comments, aggressive_count):
-    fig, ax = plt.subplots()
-    labels = ['Aggressive', 'Non-Aggressive']
-    sizes = [aggressive_count, total_comments - aggressive_count]
-    colors = ['#FF5733', '#4CAF50']
-    explode = (0.1, 0)
-    ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-    ax.axis('equal')
-    st.pyplot(fig)
 
 # Main Streamlit app function
 def main():
@@ -174,35 +186,27 @@ def main():
                 else:
                     username = user_input.strip()
 
-                with st.spinner("Fetching data..."):
-                    aggressive_comments, total_comments = fetch_aggressive_comments_by_user(username)
+                st.write(f"Fetching data for user: {username}")
 
-            if total_comments > 0:
+                aggressive_comments, total_comments = fetch_aggressive_comments_by_user(username)
                 aggressive_count = len(aggressive_comments)
-                st.write(f"Total Comments Analyzed: {total_comments}")
-                st.write(f"Aggressive Comments Found: {aggressive_count}")
-
-                with stqdm(range(100), desc="Generating Report...", total=100) as progress_bar:
-                    for _ in range(100):
-                        sleep(0.1)
-                        progress_bar.update(1)
 
                 if aggressive_comments:
-                    word_file = generate_word_doc_with_chart(aggressive_comments)
+                    st.success(f"Found {aggressive_count} aggressive comments out of {total_comments} total comments.")
+
+                    word_doc = generate_word_doc_with_chart(aggressive_comments, total_comments, aggressive_count)
+
                     st.download_button(
-                        label="Download Report as Word Document",
-                        data=word_file,
-                        file_name="aggressive_comments_report.docx",
+                        label="Download Aggressive Comments Report",
+                        data=word_doc,
+                        file_name="Aggressive_Comments_Report.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
-                else:
-                    st.write("No aggressive comments found.")
 
-                plot_aggressive_comments(total_comments, aggressive_count)
+                else:
+                    st.info("No aggressive comments found.")
             else:
-                st.write("No comments available for analysis.")
-        else:
-            st.error("Please enter a valid input.")
+                st.error("Subreddit search not implemented yet.")
 
 if __name__ == "__main__":
     main()
